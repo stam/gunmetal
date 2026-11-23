@@ -5,6 +5,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 
 // ---------------------------------------------------------------------------
@@ -110,11 +112,13 @@ const M = {
   section: new THREE.MeshBasicMaterial({ color: 0xb4b0aa }),
   wood: new THREE.MeshPhysicalMaterial({ map: woodMap, roughness: 0.58, bumpMap: woodMap, bumpScale: 1.2,
     clearcoat: 0.15, clearcoatRoughness: 0.5 }),
-  // Brushed gunmetal PVD. The photo median (palette.gunmetal) is the metal *as seen*, i.e. its
-  // reflectance times a dim surrounding; as F0 that is too dark, so the base is lifted.
+  // Gunmetal PVD, matched to the Wiesbaden Elara product photo (41.3579): a neutral, slightly cool
+  // dark grey that still reads as metal. Fully metallic; the dim, beige room probe alone renders it
+  // near-black, so the probe reflection is boosted. envMapIntensity only applies to a material's own
+  // envMap (scene.environment uses scene.environmentIntensity), so captureEnvironment() assigns it.
   // No anisotropy: without mesh tangents three.js produces NaNs with it.
-  gunmetal: new THREE.MeshPhysicalMaterial({ color: new THREE.Color(palette.gunmetal).multiplyScalar(1.75),
-    metalness: 1, roughness: 0.34 }),
+  gunmetal: new THREE.MeshPhysicalMaterial({ color: 0x6c6e73, metalness: 1, roughness: 0.3,
+    envMapIntensity: 2.4 }),
   steel: new THREE.MeshStandardMaterial({ color: 0xcfcfcf, metalness: 1, roughness: 0.22 }),
   aluminium: new THREE.MeshStandardMaterial({ color: 0xbdbdbd, metalness: 1, roughness: 0.38 }),
   grey_matte: new THREE.MeshStandardMaterial({ color: 0x3b3a38, roughness: 0.7 }),
@@ -380,6 +384,87 @@ await Promise.all(items.map(async it => {
 }));
 
 // ---------------------------------------------------------------------------
+// Towel radiator: Wiesbaden Elara electric, 1817 x 600, gunmetal PVD (41.3579). Not in the
+// Saninet design, so built from the manufacturer's line drawing. Product-local frame as the GLBs:
+// x along the width, y up from the underside, z from the wall (0) into the room (negative).
+// ---------------------------------------------------------------------------
+const RADIATOR = {
+  wall: 'B', u: 1.197 + 0.983 / 2, // centred in the free 983 mm right of the vanity
+  bottom: 0.2,                       // underside level with the vanity's underside
+  H: 1.817, W: 0.6,
+  collector: { w: 0.04, d: 0.03 },   // 40x30 R15 D-profile, round side outward
+  wallGap: 0.06,                     // back of the collectors to the wall (drawing: 55-70)
+  tube: 0.025, pitch: 0.039, groupGap: 0.117, edge: 0.031,
+  groups: [9, 9, 10, 12],            // top to bottom, 40 tubes
+  brackets: [0.084, 1.817 - 0.092],  // from the underside, read off the side view
+};
+function buildRadiator(R) {
+  const g = new THREE.Group();
+  const zc = -(R.wallGap + R.collector.d / 2);
+  const xc = R.W / 2 - R.collector.w / 2; // collector centre
+  // Collectors: D-profile, flat side towards the tubes, extruded upwards.
+  const rr = R.collector.d / 2, flat = R.collector.w - rr;
+  for (const side of [-1, 1]) {
+    const s = new THREE.Shape();
+    s.moveTo(0, -rr); s.lineTo(side * flat, -rr);
+    s.absarc(side * flat, 0, rr, -Math.PI / 2, Math.PI / 2, side < 0);
+    s.lineTo(0, rr); s.closePath();
+    const geo = new THREE.ExtrudeGeometry(s, { depth: R.H, bevelEnabled: false, curveSegments: 16 });
+    geo.rotateX(-Math.PI / 2); // extrusion -> +y
+    geo.translate(side * (R.W / 2 - R.collector.w), 0, zc);
+    g.add(new THREE.Mesh(geo, M.gunmetal));
+  }
+  // Horizontal tubes, merged into one mesh.
+  const tubes = [];
+  let y = R.H - R.edge;
+  R.groups.forEach((n, gi) => {
+    for (let i = 0; i < n; i++, y -= R.pitch) {
+      const c = new THREE.CylinderGeometry(R.tube / 2, R.tube / 2, 2 * xc, 20, 1, true);
+      c.rotateZ(Math.PI / 2);
+      c.translate(0, y, zc);
+      tubes.push(c);
+    }
+    y += R.pitch;
+    if (gi < R.groups.length - 1) y -= R.groupGap;
+  });
+  g.add(new THREE.Mesh(mergeGeometries(tubes), M.gunmetal));
+  // Wall brackets: a stem from a wall rose to the back of each collector.
+  for (const by of R.brackets) for (const side of [-1, 1]) {
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, R.wallGap, 16), M.gunmetal);
+    stem.rotation.x = Math.PI / 2; stem.position.set(side * xc, by, -R.wallGap / 2);
+    const rose = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.008, 24), M.gunmetal);
+    rose.rotation.x = Math.PI / 2; rose.position.set(side * xc, by, -0.004);
+    g.add(stem, rose);
+  }
+  // Heating element with its control unit under the right-hand collector (seen from the room,
+  // i.e. local -x), and the cable to the wall.
+  const ex = -xc;
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.04, 16), M.gunmetal);
+  neck.position.set(ex, -0.02, zc);
+  const box = new THREE.Mesh(new RoundedBoxGeometry(0.06, 0.075, 0.05, 3, 0.008), M.gunmetal);
+  box.position.set(ex, -0.04 - 0.0375, zc);
+  const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.006, 32), M.black_matte);
+  dial.rotation.x = Math.PI / 2; dial.position.set(ex, box.position.y, zc - 0.025 - 0.003);
+  const cablePath = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(ex, -0.115, zc), new THREE.Vector3(ex - 0.01, -0.16, zc + 0.01),
+    new THREE.Vector3(ex - 0.06, -0.17, -0.03), new THREE.Vector3(ex - 0.1, -0.12, -0.003),
+  ]);
+  const cable = new THREE.Mesh(new THREE.TubeGeometry(cablePath, 24, 0.0028, 8), M.black_matte);
+  g.add(neck, box, dial, cable);
+  return shadowy(g);
+}
+{
+  const w = scene3.walls.find(w => w.id === RADIATOR.wall);
+  const a = new THREE.Vector3(...w.a), x = new THREE.Vector3(...w.b).sub(a).normalize();
+  const root = new THREE.Group();
+  root.position.copy(a).addScaledVector(x, RADIATOR.u).setY(RADIATOR.bottom);
+  // local +x along the wall towards its start, local -z (into the room) along the wall normal
+  root.rotation.y = Math.atan2(-w.normal[0], -w.normal[2]);
+  root.add(buildRadiator(RADIATOR));
+  products.add(root);
+}
+
+// ---------------------------------------------------------------------------
 // Lights
 // ---------------------------------------------------------------------------
 // Single ceiling light in the centre. Just below the fixture: a light inside its own housing
@@ -466,6 +551,8 @@ function captureEnvironment() {
     envTex = next;
     scene.environment = envTex;
     scene.environmentIntensity = ENV_INTENSITY;
+    M.gunmetal.envMap = envTex; // own envMap, so its envMapIntensity applies
+    M.gunmetal.needsUpdate = true;
   }
   renderer.toneMapping = prevTM;
   hidden.forEach(o => (o.visible = true));
