@@ -18,6 +18,8 @@
     #ui button.icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
       stroke-linecap: round; stroke-linejoin: round; }
     #ui label { display: flex; align-items: center; gap: 6px; padding: 0 4px; }
+    #hint { position: fixed; left: 16px; top: 16px; background: var(--panel); border: 1px solid var(--line);
+      border-radius: 10px; padding: 6px 10px; }
     #status { position: fixed; right: 16px; bottom: 16px; background: var(--panel); border: 1px solid var(--line);
       border-radius: 10px; padding: 6px 10px; font-variant-numeric: tabular-nums; }
     #status:empty { display: none; }
@@ -45,6 +47,7 @@
     <button id="led" aria-pressed="true" title="LED-strip onder de spiegelkast (4000 K)">Spiegel-LED</button>
     <label title="Belichting">☀ <input id="exposure" type="range" min="0.3" max="2.5" step="0.05" value="0.8"></label>
   </div>
+  <div id="hint">Klik op een lade, spiegeldeur of de douchedeur om die te openen</div>
   <div id="status"></div>
   <script type="module" src="main.js"></script>
 </body>

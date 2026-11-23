@@ -287,6 +287,47 @@ function loadModel(code) {
   return (modelCache[code] ??= loader.loadAsync(`models/${code}.glb`).then(g => g.scene));
 }
 
+// Moving parts, per product: mesh names from the GLB, in the product's local frame
+// (x along the width, y up, z from the wall at 0 towards the room, i.e. negative).
+const MOVABLES = {
+  INK_1257953: [ // vanity: two drawers (front + box) slide out; the runners stay put
+    { name: 'Bovenste lade', meshes: ['Body__3', 'Grey__4'], slide: [0, 0, -0.32] },
+    { name: 'Onderste lade', meshes: ['Body__5', 'Grey__6'], slide: [0, 0, -0.32] },
+  ],
+  INK_1105364: [ // mirror cabinet: two doors hinged at the outer edges, on the front face
+    { name: 'Spiegeldeur links', meshes: ['aluminium__7', 'Mirror__8'], pivot: [-0.58, 0, -0.14], swing: 90 },
+    { name: 'Spiegeldeur rechts', meshes: ['aluminium__9', 'Mirror__10'], pivot: [0.58, 0, -0.14], swing: -90 },
+  ],
+  UNIB0801002: [ // shower door: glass, handle and edge profiles turn on the wall profile, outwards
+    { name: 'Douchedeur', meshes: ['Body__1', 'Front__2', 'Sideglas__3'], pivot: [0, 0, -0.028], swing: -85 },
+  ],
+};
+const movables = []; // { name, pivot, apply(t), t, target }
+
+function makeMovable(root, inst, spec) {
+  const pivot = new THREE.Group();
+  pivot.position.set(...(spec.pivot ?? [0, 0, 0]));
+  inst.add(pivot);
+  pivot.updateMatrixWorld(true);
+  for (const n of spec.meshes) {
+    const mesh = inst.getObjectByName(n);
+    if (mesh) pivot.attach(mesh); // keeps its world placement
+    else console.warn(`movable part ${n} not found`);
+  }
+  const rest = pivot.position.clone();
+  const slide = new THREE.Vector3(...(spec.slide ?? [0, 0, 0]));
+  const swing = THREE.MathUtils.degToRad(spec.swing ?? 0);
+  const m = {
+    name: spec.name, pivot, t: 0, target: 0,
+    apply(t) {
+      pivot.position.copy(rest).addScaledVector(slide, t);
+      pivot.rotation.y = swing * t;
+    },
+  };
+  pivot.traverse(o => (o.userData.movable = m));
+  movables.push(m);
+}
+
 const products = new THREE.Group();
 scene.add(products);
 // Besides the design's ceiling spots, a single fixture in the centre of the ceiling (for comparison).
@@ -327,6 +368,7 @@ await Promise.all(items.map(async it => {
     root.traverse(o => o.layers.set(LAYER_GHOST));
     if (it.center) centerFixture = root; else spotFixtures.push(root);
   }
+  for (const spec of MOVABLES[it.code] ?? []) makeMovable(root, inst, spec);
   products.add(root);
   (roots[it.code] ??= []).push(root);
 }));
@@ -504,6 +546,34 @@ toggle(document.getElementById('spots'), on => { setSpots(on); relight(); });
 toggle(document.getElementById('led'), on => {
   ledLights.forEach(l => (l.visible = on)); M.led_strip.emissiveIntensity = on ? 5 : 0; relight();
 });
+// Click a drawer, mirror door or the shower door to open/close it. A drag pans, so only a
+// pointer that barely moved counts as a click.
+const raycaster = new THREE.Raycaster(); // layer 0 only: cut-away walls and the ceiling are skipped
+const ndc = new THREE.Vector2();
+function movableAt(e) {
+  ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hit = raycaster.intersectObjects([room, products], true)[0]; // walls in front still occlude
+  return hit?.object.userData.movable ?? null;
+}
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', e => { downAt = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
+  const m = movableAt(e);
+  if (m) { m.target = m.target ? 0 : 1; markDirty(); }
+});
+let hoverQueued = false;
+renderer.domElement.addEventListener('pointermove', e => {
+  if (e.buttons || hoverQueued) return;
+  hoverQueued = true;
+  requestAnimationFrame(() => {
+    hoverQueued = false;
+    const m = movableAt(e);
+    renderer.domElement.style.cursor = m ? 'pointer' : '';
+    renderer.domElement.title = m ? `${m.name}: klik om te ${m.target ? 'sluiten' : 'openen'}` : '';
+  });
+});
 document.getElementById('exposure').oninput = e => { renderer.toneMappingExposure = +e.target.value; markDirty(); };
 controls.addEventListener('change', () => markDirty());
 addEventListener('resize', () => {
@@ -543,6 +613,13 @@ renderer.setAnimationLoop(() => {
     updateCutaway();
     markDirty();
   }
+  for (const m of movables) {
+    const dt = m.target - m.t;
+    if (Math.abs(dt) < 1e-3) continue;
+    m.t = Math.abs(dt) < 2e-3 ? m.target : m.t + dt * 0.12;
+    m.apply(m.t);
+    markDirty();
+  }
   controls.update();
   if (!dirty && warmup <= 0) return;
   dirty = false;
@@ -550,4 +627,4 @@ renderer.setAnimationLoop(() => {
   if (warmup === 0) status.textContent = "";
   composer.render();
 });
-window.__three = { scene, camera, renderer, walls, rotate };
+window.__three = { scene, camera, renderer, walls, rotate, movables };
