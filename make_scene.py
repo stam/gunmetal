@@ -48,6 +48,7 @@ OVERRIDES = {
     "IVY_610010": {"Black": "black_matte"},
     "INK_1105364": {"Body": "wood"},
     "UNIB1501004": {"Body": "steel", "Chrome": "steel"},
+    "UNIB0802004": {"Front": "glass_ribbed", "Sideglas": "glass_ribbed"},  # fixed side pane; the door stays clear
 }
 OPENINGS = {"UNIB0102004", "XXXX999910002"}
 LIGHTS = {"UNIB1501004"}

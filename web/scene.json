@@ -342,7 +342,8 @@
    ],
    "materials": {
     "Body": "gunmetal",
-    "Front": "glass"
+    "Front": "glass_ribbed",
+    "Sideglas": "glass_ribbed"
    }
   },
   {

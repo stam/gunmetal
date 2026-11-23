@@ -84,7 +84,7 @@ function flutedNormalMap(pitchPx = 16) {
   const g = c.getContext('2d'), img = g.createImageData(256, 4);
   for (let x = 0; x < 256; x++) {
     const s = Math.sin(((x % pitchPx) / pitchPx) * Math.PI * 2);
-    const nx = s * 0.55, nz = Math.sqrt(1 - nx * nx);
+    const nx = s * 0.85, nz = Math.sqrt(1 - nx * nx);
     for (let y = 0; y < 4; y++) {
       const i = (y * 256 + x) * 4;
       img.data[i] = (nx * 0.5 + 0.5) * 255; img.data[i + 1] = 128; img.data[i + 2] = nz * 255; img.data[i + 3] = 255;
@@ -123,9 +123,14 @@ const M = {
   mineral_white: new THREE.MeshPhysicalMaterial({ color: 0xf3f2ef, roughness: 0.5, specularIntensity: 0.5 }),
   ceramic_white: new THREE.MeshPhysicalMaterial({ color: 0xf5f5f3, roughness: 0.18, clearcoat: 1,
     clearcoatRoughness: 0.04 }),
-  glass: new THREE.MeshPhysicalMaterial({ color: 0xf2f7f5, metalness: 0, roughness: 0.04, transmission: 1,
-    thickness: 0.008, ior: 1.5, normalMap: flutedNormalMap(), normalScale: new THREE.Vector2(0.8, 0.8),
-    side: THREE.DoubleSide }),
+  // Shower door: plain clear glass.
+  glass: new THREE.MeshPhysicalMaterial({ color: 0xf2f7f5, metalness: 0, roughness: 0.02, transmission: 1,
+    thickness: 0.008, ior: 1.5, side: THREE.DoubleSide }),
+  // Fixed side pane: ribbed. Steep flutes plus roughness (blurred transmission) and extra thickness
+  // (larger refraction offset) so what's behind it smears into vertical bands, like the real thing.
+  glass_ribbed: new THREE.MeshPhysicalMaterial({ color: 0xf2f7f5, metalness: 0, roughness: 0.22, transmission: 1,
+    thickness: 0.03, ior: 1.5, normalMap: flutedNormalMap(), normalScale: new THREE.Vector2(1.2, 1.2),
+    specularIntensity: 0.8, side: THREE.DoubleSide }),
   window_glass: new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.0, transmission: 1, thickness: 0.004,
     ior: 1.5 }),
   mirror: new THREE.MeshStandardMaterial({ color: 0xf6f6f6, metalness: 1, roughness: 0.0 }),
@@ -139,10 +144,10 @@ const TEX_SIZE = {
   tile_light: palette.tiles.light.size_mm.map(v => v / 1000),
   tile_taupe: palette.tiles.taupe.size_mm.map(v => v / 1000),
   wood: palette.wood_tile_mm.map(v => v / 1000),
-  glass: [0.16, 100], // 256 px = 160 mm -> 10 mm flutes, constant vertically
+  glass_ribbed: [0.16, 100], // 256 px = 160 mm -> 10 mm flutes, constant vertically
 };
 const texSize = key => TEX_SIZE[key] ?? [1, 1];
-const BOXUV_LOCAL = new Set(['wood', 'glass']); // product-local projection (tiles use world projection)
+const BOXUV_LOCAL = new Set(['wood', 'glass_ribbed']); // product-local projection (tiles use world projection)
 
 // Box-projected UVs in metres, using the given matrix (world or product-local).
 function boxUV(geom, matrix, size = [1, 1]) {
@@ -361,7 +366,7 @@ await Promise.all(items.map(async it => {
       const local = scaleOnly.clone().multiply(new THREE.Matrix4().copy(root.matrixWorld).invert().multiply(o.matrixWorld));
       boxUV(o.geometry, local, texSize(key));
     }
-    o.castShadow = key !== 'glass' && key !== 'light_diffuser';
+    o.castShadow = !key.startsWith('glass') && key !== 'light_diffuser';
     o.receiveShadow = true;
   });
   // Downlights belong to the (cut-away) ceiling: shadow casters only, still seen by the probe.
