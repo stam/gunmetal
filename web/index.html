@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Badkamer 3D</title>
+  <style>
+    :root { --bg: #e9e7e3; --fg: #2b2a28; --panel: rgba(255,255,255,.82); --line: rgba(0,0,0,.12); }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+      font: 13px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+    canvas { display: block; }
+    #ui { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+      background: var(--panel); backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+    #ui button { font: inherit; border: 1px solid var(--line); background: #fff; color: var(--fg); border-radius: 7px;
+      padding: 6px 10px; cursor: pointer; }
+    #ui button[aria-pressed="true"] { background: var(--fg); color: #fff; }
+    #ui label { display: flex; align-items: center; gap: 6px; padding: 0 4px; }
+    #status { position: fixed; right: 16px; bottom: 16px; background: var(--panel); border: 1px solid var(--line);
+      border-radius: 10px; padding: 6px 10px; font-variant-numeric: tabular-nums; }
+    #status:empty { display: none; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="ui">
+    <button id="rotL" title="Draai links (Q)">⟲</button>
+    <button id="rotR" title="Draai rechts (E)">⟳</button>
+    <button id="day" aria-pressed="true" title="Daglicht door het raam">Daglicht</button>
+    <button id="spots" aria-pressed="true" title="Plafondspots">Spots</button>
+    <label title="Belichting">☀ <input id="exposure" type="range" min="0.3" max="2.5" step="0.05" value="0.8"></label>
+  </div>
+  <div id="status"></div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+ "tile_light": "#cecac1",
+ "tile_taupe": "#a8a399",
+ "wood": "#a47959",
+ "gunmetal": "#46433e",
+ "wood_tile_mm": [
+  800.0,
+  362.26415094339626
+ ],
+ "tiles": {
+  "light": {
+   "id": "TETO_19a096f7-d4bb-4b58-a418-3b16d7889bfc",
+   "tiles_x": 1,
+   "size_mm": [
+    600,
+    600
+   ]
+  },
+  "taupe": {
+   "id": "TETO_37e1e33b-19b4-442b-8507-c8865bc4701c",
+   "tiles_x": 2,
+   "size_mm": [
+    1200,
+    600
+   ]
+  }
+ },
+ "walls": {
+  "wall1": "taupe",
+  "wall2": "light",
+  "wall3": "light",
+  "wall4": "light"
+ },
+ "floor": "taupe"
+}
