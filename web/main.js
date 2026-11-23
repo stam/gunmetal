@@ -13,7 +13,12 @@ import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUnifo
 const WALL_T = 0.1;          // wall thickness (outward), m
 const LAYER_GHOST = 1;       // near walls/ceiling: cast shadows, not drawn
 const LAYER_PROBE = 2;       // seen only by the environment probe (sky behind the window)
-const SPOT_COLOR = 0xfff0dc; // ~3500 K LED
+const CEIL_COLOR = 0xfff0dc; // ~3500 K LED
+const DOWNLIGHT = 'UNIB1501004';
+const MIRROR_CABINET = 'INK_1105364'; // BRAUER Impress Deluxe spiegelkast 120x70
+// Impress Deluxe: indirect LED strip set into the underside, lighting the basin. 4000 K per the spec;
+// strip length and set-back are not published, so they are estimated.
+const LED = { color: 0xffeedd, length: 1.12, width: 0.012, setback: 0.025, intensity: 40 };
 
 // Render state. Declared first: texture callbacks fire while the module is still awaiting.
 let dirty = true;
@@ -123,7 +128,8 @@ const M = {
   window_glass: new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.0, transmission: 1, thickness: 0.004,
     ior: 1.5 }),
   mirror: new THREE.MeshStandardMaterial({ color: 0xf6f6f6, metalness: 1, roughness: 0.0 }),
-  light_diffuser: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: SPOT_COLOR, emissiveIntensity: 6 }),
+  light_diffuser: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: CEIL_COLOR, emissiveIntensity: 6 }),
+  led_strip: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: LED.color, emissiveIntensity: 5 }),
   plant_pot: new THREE.MeshStandardMaterial({ color: 0x8b847a, roughness: 0.9 }),
   plant_leaf: new THREE.MeshStandardMaterial({ color: 0x4c6a3b, roughness: 0.6, side: THREE.DoubleSide }),
   sky: new THREE.MeshBasicMaterial({ color: new THREE.Color(DAY_COLOR).multiplyScalar(3) }),
@@ -283,7 +289,16 @@ function loadModel(code) {
 
 const products = new THREE.Group();
 scene.add(products);
-await Promise.all(scene3.items.map(async it => {
+// Besides the design's ceiling spots, a single fixture in the centre of the ceiling (for comparison).
+const items = [
+  ...scene3.items,
+  { code: DOWNLIGHT, center: true, pos: [RW / 2, RH, RD / 2], rotY: 0, scale: [1, 1, 1],
+    materials: { Body: 'steel', Chrome: 'steel' } },
+];
+const roots = {}; // code -> [root]
+const spotFixtures = [];
+let centerFixture = null;
+await Promise.all(items.map(async it => {
   const src = await loadModel(it.code);
   const root = new THREE.Group();
   root.position.set(...it.pos);
@@ -308,17 +323,34 @@ await Promise.all(scene3.items.map(async it => {
     o.receiveShadow = true;
   });
   // Downlights belong to the (cut-away) ceiling: shadow casters only, still seen by the probe.
-  if (it.code === "UNIB1501004") root.traverse(o => o.layers.set(LAYER_GHOST));
+  if (it.code === DOWNLIGHT) {
+    root.traverse(o => o.layers.set(LAYER_GHOST));
+    if (it.center) centerFixture = root; else spotFixtures.push(root);
+  }
   products.add(root);
+  (roots[it.code] ??= []).push(root);
 }));
 
 // ---------------------------------------------------------------------------
 // Lights
 // ---------------------------------------------------------------------------
+// Single ceiling light in the centre. Just below the fixture: a light inside its own housing
+// overflows the probe (inverse-square).
+const ceilLight = new THREE.PointLight(CEIL_COLOR, 5, 0, 2);
+ceilLight.position.set(RW / 2, RH - 0.03, RD / 2);
+ceilLight.castShadow = true;
+ceilLight.shadow.mapSize.set(1024, 1024);
+ceilLight.shadow.bias = -0.0003;
+ceilLight.shadow.normalBias = 0.015;
+ceilLight.shadow.radius = 4;
+ceilLight.shadow.camera.near = 0.05;
+ceilLight.shadow.camera.layers.enable(LAYER_GHOST);
+scene.add(ceilLight);
+
+// The design's four ceiling spots, off by default.
 const spots = [];
 for (const p of scene3.downlights) {
-  const s = new THREE.SpotLight(SPOT_COLOR, 5, 0, THREE.MathUtils.degToRad(58), 1, 2);
-  // just below the fixture: a light inside its own housing overflows the probe (inverse-square)
+  const s = new THREE.SpotLight(CEIL_COLOR, 5, 0, THREE.MathUtils.degToRad(58), 1, 2);
   s.position.set(p[0], p[1] - 0.03, p[2]);
   s.target.position.set(p[0], 0, p[2]);
   s.castShadow = true;
@@ -330,6 +362,27 @@ for (const p of scene3.downlights) {
   s.shadow.camera.layers.enable(LAYER_GHOST);
   scene.add(s, s.target);
   spots.push(s);
+}
+function setSpots(on) {
+  spots.forEach(l => (l.visible = on));
+  spotFixtures.forEach(f => (f.visible = on)); // hides their glowing diffusers in the probe too
+}
+setSpots(false);
+
+// Soft LED strip under the mirror cabinet. Cabinet local frame: x along its width, y up from the
+// underside, z from the wall (0) to the front (-0.14).
+const ledLights = [];
+for (const root of roots[MIRROR_CABINET] ?? []) {
+  const z = -0.14 + LED.setback;
+  const strip = new THREE.Mesh(new THREE.BoxGeometry(LED.length, 0.003, LED.width), M.led_strip);
+  strip.position.set(0, -0.0015, z);
+  root.add(strip);
+  // Diffused output: a slightly wider emitter than the strip itself keeps the wash soft.
+  const area = new THREE.RectAreaLight(LED.color, LED.intensity, LED.length, LED.width * 3);
+  area.position.set(0, -0.004, z);
+  area.rotation.x = -Math.PI / 2; // emit downwards
+  root.add(area);
+  ledLights.push(area);
 }
 // Very weak fill so nothing is pitch black before the environment probe is built.
 const fill = new THREE.HemisphereLight(0xffffff, 0xd8d2c8, 0.15);
@@ -444,8 +497,12 @@ toggle(document.getElementById('day'), on => {
   windowLights.forEach(l => (l.visible = on)); M.sky.color.set(on ? DAY_COLOR : 0x30343a).multiplyScalar(on ? 3 : 1);
   relight();
 });
-toggle(document.getElementById('spots'), on => {
-  spots.forEach(l => (l.visible = on)); M.light_diffuser.emissiveIntensity = on ? 6 : 0; relight();
+toggle(document.getElementById('ceil'), on => {
+  ceilLight.visible = on; centerFixture.visible = on; relight();
+});
+toggle(document.getElementById('spots'), on => { setSpots(on); relight(); });
+toggle(document.getElementById('led'), on => {
+  ledLights.forEach(l => (l.visible = on)); M.led_strip.emissiveIntensity = on ? 5 : 0; relight();
 });
 document.getElementById('exposure').oninput = e => { renderer.toneMappingExposure = +e.target.value; markDirty(); };
 controls.addEventListener('change', () => markDirty());

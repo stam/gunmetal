@@ -14,6 +14,9 @@
     #ui button { font: inherit; border: 1px solid var(--line); background: #fff; color: var(--fg); border-radius: 7px;
       padding: 6px 10px; cursor: pointer; }
     #ui button[aria-pressed="true"] { background: var(--fg); color: #fff; }
+    #ui button.icon { display: grid; place-items: center; padding: 5px 7px; }
+    #ui button.icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
+      stroke-linecap: round; stroke-linejoin: round; }
     #ui label { display: flex; align-items: center; gap: 6px; padding: 0 4px; }
     #status { position: fixed; right: 16px; bottom: 16px; background: var(--panel); border: 1px solid var(--line);
       border-radius: 10px; padding: 6px 10px; font-variant-numeric: tabular-nums; }
@@ -30,10 +33,16 @@
 </head>
 <body>
   <div id="ui">
-    <button id="rotL" title="Draai links (Q)">⟲</button>
-    <button id="rotR" title="Draai rechts (E)">⟳</button>
+    <button id="rotL" class="icon" title="Draai links (Q)" aria-label="Draai links">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+    </button>
+    <button id="rotR" class="icon" title="Draai rechts (E)" aria-label="Draai rechts">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+    </button>
     <button id="day" aria-pressed="true" title="Daglicht door het raam">Daglicht</button>
-    <button id="spots" aria-pressed="true" title="Plafondspots">Spots</button>
+    <button id="ceil" aria-pressed="true" title="Plafondlamp in het midden">Plafondlamp</button>
+    <button id="spots" aria-pressed="false" title="De vier plafondspots uit het ontwerp">Spots</button>
+    <button id="led" aria-pressed="true" title="LED-strip onder de spiegelkast (4000 K)">Spiegel-LED</button>
     <label title="Belichting">☀ <input id="exposure" type="range" min="0.3" max="2.5" step="0.05" value="0.8"></label>
   </div>
   <div id="status"></div>
