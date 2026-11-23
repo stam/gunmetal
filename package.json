@@ -1,0 +1,9 @@
+{
+  "name": "gunmetal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bathroom export",
+  "scripts": {
+    "serve": "npx --yes serve@14 web -l 3000"
+  }
+}
