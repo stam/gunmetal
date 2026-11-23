@@ -13,7 +13,8 @@ import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUnifo
 const WALL_T = 0.1;          // wall thickness (outward), m
 const LAYER_GHOST = 1;       // near walls/ceiling: cast shadows, not drawn
 const LAYER_PROBE = 2;       // seen only by the environment probe (sky behind the window)
-const CEIL_COLOR = 0xfff0dc; // ~3500 K LED
+const CEIL_COLOR = 0xfff0dc; // ~3500 K LED (spots)
+const CENTER_COLOR = 0xfff6ee; // ~4000 K: the centre lamp, more neutral than the spots
 const DOWNLIGHT = 'UNIB1501004';
 const MIRROR_CABINET = 'INK_1105364'; // BRAUER Impress Deluxe spiegelkast 120x70
 // Impress Deluxe: indirect LED strip set into the underside, lighting the basin. 4000 K per the spec;
@@ -42,7 +43,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NeutralToneMapping; // keeps material colours close to their albedo
-renderer.toneMappingExposure = 0.8;
+renderer.toneMappingExposure = 0.5;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
@@ -378,7 +379,7 @@ await Promise.all(items.map(async it => {
 // ---------------------------------------------------------------------------
 // Single ceiling light in the centre. Just below the fixture: a light inside its own housing
 // overflows the probe (inverse-square).
-const ceilLight = new THREE.PointLight(CEIL_COLOR, 5, 0, 2);
+const ceilLight = new THREE.PointLight(CENTER_COLOR, 3.5, 0, 2);
 ceilLight.position.set(RW / 2, RH - 0.03, RD / 2);
 ceilLight.castShadow = true;
 ceilLight.shadow.mapSize.set(1024, 1024);
@@ -388,8 +389,13 @@ ceilLight.shadow.radius = 4;
 ceilLight.shadow.camera.near = 0.05;
 ceilLight.shadow.camera.layers.enable(LAYER_GHOST);
 scene.add(ceilLight);
+// Its own diffuser material, so its glow in the probe matches the lamp's colour.
+const centerDiffuser = M.light_diffuser.clone();
+centerDiffuser.emissive.set(CENTER_COLOR);
+centerDiffuser.emissiveIntensity = 4;
+centerFixture.traverse(o => { if (o.isMesh && o.material === M.light_diffuser) o.material = centerDiffuser; });
 
-// The design's four ceiling spots, off by default.
+// The design's four ceiling spots, on by default (the centre lamp is off).
 const spots = [];
 for (const p of scene3.downlights) {
   const s = new THREE.SpotLight(CEIL_COLOR, 5, 0, THREE.MathUtils.degToRad(58), 1, 2);
@@ -409,7 +415,9 @@ function setSpots(on) {
   spots.forEach(l => (l.visible = on));
   spotFixtures.forEach(f => (f.visible = on)); // hides their glowing diffusers in the probe too
 }
-setSpots(false);
+setSpots(true);
+ceilLight.visible = false;
+centerFixture.visible = false;
 
 // Soft LED strip under the mirror cabinet. Cabinet local frame: x along its width, y up from the
 // underside, z from the wall (0) to the front (-0.14).
